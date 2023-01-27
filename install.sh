@@ -61,14 +61,9 @@ fi
 
 # Setting up locales.
 read -r -p "Please insert the locale you use in this format (xx_XX): " locale
-echo "$locale.UTF-8 UTF-8"  > /mnt/etc/locale.gen
-echo "LANG=$locale.UTF-8" > /mnt/etc/locale.conf
 
 # Setting up keyboard layout.
 read -r -p "Please insert the keyboard layout you use: " kblayout
-echo "KEYMAP=$kblayout" > /mnt/etc/vconsole.conf
-
-
 
 
 ## installation ##
@@ -150,6 +145,11 @@ cat > /mnt/etc/hosts <<EOF
 ::1         localhost
 127.0.1.1   $hostname.localdomain   $hostname
 EOF
+
+# Setup keyboard
+echo "$locale.UTF-8 UTF-8"  > /mnt/etc/locale.gen
+echo "LANG=$locale.UTF-8" > /mnt/etc/locale.conf
+echo "KEYMAP=$kblayout" > /mnt/etc/vconsole.conf
 
 # Enabling CPU Mitigations
 curl https://raw.githubusercontent.com/Kicksecure/security-misc/master/etc/default/grub.d/40_cpu_mitigations.cfg >> /mnt/etc/grub.d/40_cpu_mitigations.cfg
