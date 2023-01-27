@@ -119,7 +119,7 @@ XFS=$root
 # Formatting the LUKS Container as BTRFS.
 echo "Formatting the root partition as BTRFS."
 mkfs.xfs $XFS &>/dev/null
-mount -o clear_cache,nospace_cache $XFS /mnt
+mount $XFS /mnt
 
 mkdir -p /mnt/boot/efi
 mount -o nodev,nosuid,noexec $ESP /mnt/boot/efi
