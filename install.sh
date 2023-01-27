@@ -79,6 +79,9 @@ pacman -Sy
 # Installing curl
 pacman -S --noconfirm curl
 
+# Installing XFS tools
+pacman -S --noconfirm xfsprogs
+
 # formatting the disk
 wipefs -af "$DISK" &>/dev/null
 sgdisk -Zo "$DISK" &>/dev/null
@@ -111,93 +114,12 @@ partprobe "$DISK"
 echo "Formatting the EFI Partition as FAT32."
 mkfs.fat -F 32 -s 2 $ESP &>/dev/null
 
-BTRFS="/dev/mapper/$root"
+XFS=$root
 
 # Formatting the LUKS Container as BTRFS.
 echo "Formatting the root partition as BTRFS."
-mkfs.btrfs $BTRFS &>/dev/null
-mount -o clear_cache,nospace_cache $BTRFS /mnt
-
-# Creating BTRFS subvolumes.
-echo "Creating BTRFS subvolumes."
-btrfs su cr /mnt/@ &>/dev/null
-btrfs su cr /mnt/@/.snapshots &>/dev/null
-mkdir -p /mnt/@/.snapshots/1 &>/dev/null
-btrfs su cr /mnt/@/.snapshots/1/snapshot &>/dev/null
-btrfs su cr /mnt/@/boot/ &>/dev/null
-btrfs su cr /mnt/@/home &>/dev/null
-btrfs su cr /mnt/@/root &>/dev/null
-btrfs su cr /mnt/@/srv &>/dev/null
-btrfs su cr /mnt/@/var_log &>/dev/null
-btrfs su cr /mnt/@/var_log_journal &>/dev/null
-btrfs su cr /mnt/@/var_crash &>/dev/null
-btrfs su cr /mnt/@/var_cache &>/dev/null
-btrfs su cr /mnt/@/var_tmp &>/dev/null
-btrfs su cr /mnt/@/var_spool &>/dev/null
-btrfs su cr /mnt/@/var_lib_libvirt_images &>/dev/null
-btrfs su cr /mnt/@/var_lib_machines &>/dev/null
-btrfs su cr /mnt/@/var_lib_gdm &>/dev/null
-btrfs su cr /mnt/@/var_lib_AccountsService &>/dev/null
-
-chattr +C /mnt/@/boot
-chattr +C /mnt/@/srv
-chattr +C /mnt/@/var_log
-chattr +C /mnt/@/var_log_journal
-chattr +C /mnt/@/var_crash
-chattr +C /mnt/@/var_cache
-chattr +C /mnt/@/var_tmp
-chattr +C /mnt/@/var_spool
-chattr +C /mnt/@/var_lib_libvirt_images
-chattr +C /mnt/@/var_lib_machines
-chattr +C /mnt/@/var_lib_gdm
-chattr +C /mnt/@/var_lib_AccountsService
-
-#Set the default BTRFS Subvol to Snapshot 1 before pacstrapping
-btrfs subvolume set-default "$(btrfs subvolume list /mnt | grep "@/.snapshots/1/snapshot" | grep -oP '(?<=ID )[0-9]+')" /mnt
-
-cat << EOF >> /mnt/@/.snapshots/1/info.xml
-<?xml version="1.0"?>
-<snapshot>
-  <type>single</type>
-  <num>1</num>
-  <date>1999-03-31 0:00:00</date>
-  <description>First Root Filesystem</description>
-  <cleanup>number</cleanup>
-</snapshot>
-EOF
-
-chmod 600 /mnt/@/.snapshots/1/info.xml
-
-# Mounting the newly created subvolumes.
-umount /mnt
-echo "Mounting the newly created subvolumes."
-mount -o ssd,noatime,space_cache,compress=zstd:15 $BTRFS /mnt
-mkdir -p /mnt/{boot,root,home,.snapshots,srv,tmp,/var/log,/var/crash,/var/cache,/var/tmp,/var/spool,/var/lib/libvirt/images,/var/lib/machines,/var/lib/gdm,/var/lib/AccountsService}
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodev,nosuid,noexec,subvol=@/boot $BTRFS /mnt/boot
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodev,nosuid,subvol=@/root $BTRFS /mnt/root
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodev,nosuid,subvol=@/home $BTRFS /mnt/home
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,subvol=@/.snapshots $BTRFS /mnt/.snapshots
-mount -o ssd,noatime,space_cache=v2.autodefrag,compress=zstd:15,discard=async,subvol=@/srv $BTRFS /mnt/srv
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_log $BTRFS /mnt/var/log
-
-# Toolbox (https://github.com/containers/toolbox) needs /var/log/journal to have dev, suid, and exec, Thus I am splitting the subvolume. Need to make the directory after /mnt/var/log/ has been mounted.
-mkdir -p /mnt/var/log/journal
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,subvol=@/var_log_journal $BTRFS /mnt/var/log/journal
-
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_crash $BTRFS /mnt/var/crash
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_cache $BTRFS /mnt/var/cache
-
-# Pamac needs /var/tmp to have exec. Thus I am not adding that flag.
-# I am considering including pacmac-flatpak-gnome AUR package by default, since I am its maintainer.
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,subvol=@/var_tmp $BTRFS /mnt/var/tmp
-
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_spool $BTRFS /mnt/var/spool
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_lib_libvirt_images $BTRFS /mnt/var/lib/libvirt/images
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_lib_machines $BTRFS /mnt/var/lib/machines
-
-# GNOME requires /var/lib/gdm and /var/lib/AccountsService to be writeable when booting into a readonly snapshot. Thus we sadly have to split them.
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_lib_gdm $BTRFS /mnt/var/lib/gdm
-mount -o ssd,noatime,space_cache=v2,autodefrag,compress=zstd:15,discard=async,nodatacow,nodev,nosuid,noexec,subvol=@/var_lib_AccountsService $BTRFS /mnt/var/lib/AccountsService
+mkfs.xfs $XFS &>/dev/null
+mount -o clear_cache,nospace_cache $XFS /mnt
 
 mkdir -p /mnt/boot/efi
 mount -o nodev,nosuid,noexec $ESP /mnt/boot/efi
@@ -206,7 +128,7 @@ mount -o nodev,nosuid,noexec $ESP /mnt/boot/efi
 # Pacstrap (setting up a base sytem onto the new root).
 # As I said above, I am considering replacing gnome-software with pamac-flatpak-gnome as PackageKit seems very buggy on Arch Linux right now.
 echo "Installing the base system (it may take a while)."
-pacstrap /mnt base ${kernel} ${microcode} linux-firmware grub grub-btrfs snapper snap-pac efibootmgr sudo networkmanager apparmor python-psutil python-notify2 nano gdm gnome-control-center gnome-terminal gnome-software gnome-software-packagekit-plugin gnome-tweaks nautilus pipewire-pulse pipewire-alsa pipewire-jack flatpak firewalld zram-generator adobe-source-han-sans-otc-fonts adobe-source-han-serif-otc-fonts gnu-free-fonts reflector mlocate man-db chrony
+pacstrap /mnt base ${kernel} ${microcode} linux-firmware grub efibootmgr sudo networkmanager apparmor python-psutil python-notify2 nano gdm gnome-control-center gnome-terminal gnome-software gnome-software-packagekit-plugin gnome-tweaks nautilus pipewire-pulse pipewire-alsa pipewire-jack flatpak firewalld adobe-source-han-sans-otc-fonts adobe-source-han-serif-otc-fonts gnu-free-fonts reflector mlocate man-db chrony
 
 # Routing jack2 through PipeWire.
 echo "/usr/lib/pipewire-0.3/jack" > /mnt/etc/ld.so.conf.d/pipewire-jack.conf
@@ -227,10 +149,6 @@ cat > /mnt/etc/hosts <<EOF
 ::1         localhost
 127.0.1.1   $hostname.localdomain   $hostname
 EOF
-
-# Configuring /etc/mkinitcpio.conf
-echo "Configuring /etc/mkinitcpio for ZSTD compression and LUKS hook."
-sed -i 's,#COMPRESSION="zstd",COMPRESSION="zstd",g' /mnt/etc/mkinitcpio.conf
 
 # Enabling CPU Mitigations
 curl https://raw.githubusercontent.com/Kicksecure/security-misc/master/etc/default/grub.d/40_cpu_mitigations.cfg >> /mnt/etc/grub.d/40_cpu_mitigations.cfg
@@ -280,13 +198,6 @@ account		required	pam_unix.so
 session		required	pam_unix.so
 EOF
 
-# ZRAM configuration
-bash -c 'cat > /mnt/etc/systemd/zram-generator.conf' <<-'EOF'
-[zram0]
-zram-fraction = 1
-max-zram-size = 8192
-EOF
-
 # Randomize Mac Address.
 bash -c 'cat > /mnt/etc/NetworkManager/conf.d/00-macrandomize.conf' <<-'EOF'
 [device]
@@ -333,15 +244,6 @@ arch-chroot /mnt /bin/bash -e <<EOF
     echo "Creating a new initramfs."
     chmod 600 /boot/initramfs-linux* &>/dev/null
     mkinitcpio -P &>/dev/null
-
-    # Snapper configuration
-    umount /.snapshots
-    rm -r /.snapshots
-    snapper --no-dbus -c root create-config /
-    btrfs subvolume delete /.snapshots
-    mkdir /.snapshots
-    mount -a
-    chmod 750 /.snapshots
 
     # Installing GRUB.
     echo "Installing GRUB on /boot."
